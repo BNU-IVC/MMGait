@@ -27,10 +27,7 @@ class ConvModalFusion2D(nn.Module):
         super().__init__()
         self.num_modal = num_modal
         self.in_channels = in_channels
-        # 融合卷积：concat -> conv1x1
         self.fusion_conv = nn.Conv2d(in_channels * num_modal, in_channels, kernel_size=1, bias=False)
-
-        # 自适应模态权重 (Gating)
         self.gate = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(in_channels, in_channels, 1, bias=False),
@@ -55,6 +52,16 @@ class ConvModalFusion2D(nn.Module):
         return out
 
 class OmniGait(BaseModel):
+    fusion_pairs = [
+        ("rgb_sils", "depth"),
+        ("rgb_sils", "event"),
+        ("rgb_sils", "heatmap"),
+        ("rgb_sils", "ir"),
+        ("rgb_sils", "ir_sils"),
+        ("rgb_sils", "lidar_depth"),
+        ("rgb_sils", "radar_depth"),
+        ("rgb_sils", "rgb"),
+    ]
 
     def img_pretreat(self,ipt):
         if len(ipt.size()) == 4:
@@ -145,15 +152,17 @@ class OmniGait(BaseModel):
         _, logits = self.BNNecks(embed)  # [B, c, p]
         return embed, logits
 
-    def split_forword(self, img, tokenizer, seqL):
-
-        feat = tokenizer(img)# [B, c, s, h, w]
-        feat = self.img_encoder(feat)# [B, c, s, h, w]
-        feat = self.TP(feat, seqL, options={"dim": 2})[0]  # [B, c, h, w]
-        feat = self.HPP(feat) # [B, c, p]
-        embed = self.FCs(feat)  # [B, c, p]
-        _, logits = self.BNNecks(embed)  # [B, c, p]
+    def encode_token_feat(self, feat, seqL):
+        feat = self.img_encoder(feat)
+        feat = self.TP(feat, seqL, options={"dim": 2})[0]
+        feat = self.HPP(feat)
+        embed = self.FCs(feat)
+        _, logits = self.BNNecks(embed)
         return embed, logits
+
+    def split_forword(self, img, tokenizer, seqL):
+        feat = tokenizer(img)# [B, c, s, h, w]
+        return self.encode_token_feat(feat, seqL)
 
         
 
@@ -177,24 +186,23 @@ class OmniGait(BaseModel):
 
         # tokenize
         img_modals = [
-            (depth, self.depth_tokenizer),
-            (event, self.event_tokenizer),
-            (heatmap, self.heatmap_tokenizer),
-            (ir, self.ir_tokenizer),
-            (ir_sils, self.ir_sils_tokenizer),
-            (lidar_depth, self.lidar_depth_tokenizer),
-            (radar_depth, self.radar_depth_tokenizer),
-            (rgb, self.rgb_tokenizer),
-            (rgb_sils, self.rgb_sils_tokenizer)
+            ("depth", depth, self.depth_tokenizer),
+            ("event", event, self.event_tokenizer),
+            ("heatmap", heatmap, self.heatmap_tokenizer),
+            ("ir", ir, self.ir_tokenizer),
+            ("ir_sils", ir_sils, self.ir_sils_tokenizer),
+            ("lidar_depth", lidar_depth, self.lidar_depth_tokenizer),
+            ("radar_depth", radar_depth, self.radar_depth_tokenizer),
+            ("rgb", rgb, self.rgb_tokenizer),
+            ("rgb_sils", rgb_sils, self.rgb_sils_tokenizer)
         ]
 
 
         if self.training:
             token_feats= []
-            for modal_input, tokenizer in img_modals:
+            for _, modal_input, tokenizer in img_modals:
                 tf = tokenizer(modal_input)   # shape: [B, C, S, H, W]
-                token_feats.append(tf) # 9 * 单模态
-
+                token_feats.append(tf) 
 
             fused_feats = [self.early_fusion_module(torch.cat([token_feats[-1],token_feats[j]],dim=1)) for j in range(len(token_feats)-1)] #8 * Fused Feature
 
@@ -207,12 +215,23 @@ class OmniGait(BaseModel):
         else:
 
             # Omni-eval
+            token_feat_dict = {}
             all_embeds = []
-            for (i, (modal_input, tokenizer)) in enumerate(img_modals):
+            for (i, (modal_name, modal_input, tokenizer)) in enumerate(img_modals):
+                token_feat_dict[modal_name] = tokenizer(modal_input)
                 embed, logits = self.split_forword(modal_input, tokenizer, seqL[i].unsqueeze(0))   # shape: [B, C, ...]
                 all_embeds.append(embed)
-            
+
+            fusion_embeds = []
+            for anchor_name, pair_name in self.fusion_pairs:
+                fused_feat = self.early_fusion_module(
+                    torch.cat([token_feat_dict[anchor_name], token_feat_dict[pair_name]], dim=1)
+                )
+                fusion_embed, _ = self.encode_token_feat(fused_feat, seqL[-1].unsqueeze(0))
+                fusion_embeds.append(fusion_embed)
+
             all_embeds = torch.cat(all_embeds,dim=-1)
+            fusion_embeds = torch.cat(fusion_embeds, dim=-1)
             all_labs = None
             all_logits = None
 
@@ -226,7 +245,8 @@ class OmniGait(BaseModel):
 
             },
             'inference_feat': {
-                'embeddings': all_embeds 
+                'embeddings': all_embeds,
+                'fusion_embeddings': fusion_embeds if not self.training else all_embeds
             }
         }
 

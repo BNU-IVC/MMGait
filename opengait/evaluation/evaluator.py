@@ -669,7 +669,7 @@ def mmgait_cross_modal_evaluation(data, dataset, metric):
     return result_dict
 
 
-def mmgait_cal_metric(feature_probe, feature_gallery, label, seq_type, view, msg_mgr, probe_name, gallery_name,metric):
+def mmgait_cal_metric(feature_probe, feature_gallery, label, seq_type, view, msg_mgr, probe_name, gallery_name, metric):
     probe_seq_dict = {'NM': ['NM-02'], 'BG': ['BG-01'], 'CL': ['CL-01']}
     gallery_seq_dict = ['NM-01']
     label = np.array(label)
@@ -711,21 +711,21 @@ def mmgait_cal_metric(feature_probe, feature_gallery, label, seq_type, view, msg
         for type_ in probe_seq_dict.keys():
             sub_acc = de_diag(acc[type_][:,:,rank], each_angle=True)
             sub_mAP = de_diag(mean_ap[type_][:,:,rank], each_angle=True)
-            # sub_mAP = np.mean(mean_ap[type_][:,:,rank])
             if rank == 0:
-                # msg_mgr.log_info(f'{type_}@R{rank+1}: {sub_acc}')
-                result_dict[f'scalar/test_accuracy/{type_}@R{rank+1}'] = np.mean(sub_acc)
-                # msg_mgr.log_info(f'{type_}@mAP: {sub_mAP}')
-                result_dict[f'scalar/test_accuracy/{type_}-mAP'] = np.mean(sub_mAP)
+                metric_prefix = f'scalar/test_accuracy/{probe_name}_to_{gallery_name}'
+                result_dict[f'{metric_prefix}/{type_}@R{rank+1}'] = np.mean(sub_acc)
+                result_dict[f'{metric_prefix}/{type_}-mAP'] = np.mean(sub_mAP)
 
             out_str += f"{type_}@R{rank+1}: {np.mean(sub_acc):.2f}%\t"
             out_map_str += f"{type_}@mAP: {np.mean(sub_mAP):.2f}%\t"
 
         msg_mgr.log_info(out_str)
         msg_mgr.log_info(f'{out_map_str}')
+    return result_dict
 
 def mmgait_omni_multi_modal_evaluation(data, dataset, metric='euc'):
     feature, label, seq_type, view = data['embeddings'], data['labels'], data['types'], data['views']
+    fusion_feature = data.get('fusion_embeddings')
     msg_mgr = get_msg_mgr()
     num_modals = 9
     feature = np.split(feature, num_modals, axis=-1)
@@ -744,8 +744,12 @@ def mmgait_omni_multi_modal_evaluation(data, dataset, metric='euc'):
         "rgb_sils": rgb_sils_embed,
     }
 
+    result_dict = {}
+
     for modal_name, modal_embed in modal_embeddings.items():
-        mmgait_cal_metric(modal_embed, modal_embed, label, seq_type, view, msg_mgr, modal_name, modal_name, metric)
+        result_dict.update(
+            mmgait_cal_metric(modal_embed, modal_embed, label, seq_type, view, msg_mgr, modal_name, modal_name, metric)
+        )
 
     cross_modal_pairs = [
         ("rgb_sils", "ir_sils"),
@@ -761,28 +765,59 @@ def mmgait_omni_multi_modal_evaluation(data, dataset, metric='euc'):
     ]
 
     for probe_name, gallery_name in cross_modal_pairs:
-        mmgait_cal_metric(
-            modal_embeddings[probe_name],
-            modal_embeddings[gallery_name],
-            label,
-            seq_type,
-            view,
-            msg_mgr,
-            probe_name,
-            gallery_name,
-            metric
+        result_dict.update(
+            mmgait_cal_metric(
+                modal_embeddings[probe_name],
+                modal_embeddings[gallery_name],
+                label,
+                seq_type,
+                view,
+                msg_mgr,
+                probe_name,
+                gallery_name,
+                metric
+            )
         )
-        mmgait_cal_metric(
-            modal_embeddings[gallery_name],
-            modal_embeddings[probe_name],
-            label,
-            seq_type,
-            view,
-            msg_mgr,
-            gallery_name,
-            probe_name,
-            metric
+        result_dict.update(
+            mmgait_cal_metric(
+                modal_embeddings[gallery_name],
+                modal_embeddings[probe_name],
+                label,
+                seq_type,
+                view,
+                msg_mgr,
+                gallery_name,
+                probe_name,
+                metric
+            )
         )
 
-    result_dict = {}
+    if fusion_feature is not None:
+        fusion_names = [
+            "fusion_rgb_sils_depth",
+            "fusion_rgb_sils_event",
+            "fusion_rgb_sils_heatmap",
+            "fusion_rgb_sils_ir",
+            "fusion_rgb_sils_ir_sils",
+            "fusion_rgb_sils_lidar_depth",
+            "fusion_rgb_sils_radar_depth",
+            "fusion_rgb_sils_rgb",
+        ]
+        fusion_embeddings = np.split(fusion_feature, len(fusion_names), axis=-1)
+
+        for fusion_name, fusion_embed in zip(fusion_names, fusion_embeddings):
+            result_dict.update(
+                mmgait_cal_metric(
+                    fusion_embed,
+                    fusion_embed,
+                    label,
+                    seq_type,
+                    view,
+                    msg_mgr,
+                    fusion_name,
+                    fusion_name,
+                    metric
+                )
+            )
+
     return result_dict
