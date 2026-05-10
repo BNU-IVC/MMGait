@@ -29,11 +29,11 @@ To obtain and use MMGait and its subsets, all users are required to complete the
 
 1. Download the latest agreement: `MMGait Dataset Usage Agreement.pdf`.
 2. Complete and sign it.
-3. Submit it to `BNU-IVC@outlook.com`.
+3. Submit it to `BNU-IVC@outlook.com`, with `chenye.wang@mail.bnu.edu.cn` cc'ed.
 4. Please use your organization/institute email address to send the mail.
 5. We will handle requests within a week. Occasionally, emails may be flagged as spam. If you have not received a response within a week, please resend your mail from an alternate email address.
 
-In case you encounter any issues, please feel free to reach out to us via `BNU-IVC@outlook.com`.
+In case you encounter any issues, please feel free to reach out to us via `BNU-IVC@outlook.com`, with `chenye.wang@mail.bnu.edu.cn` cc'ed.
 
 #### 3. Data Preparation
 
