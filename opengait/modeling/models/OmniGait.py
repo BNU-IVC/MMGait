@@ -1,21 +1,15 @@
 import torch
 import torch.nn as nn
-import pdb
-import os
 import numpy as np
-import os.path as osp
-import matplotlib.pyplot as plt
+
 
 from ..base_model import BaseModel
 from ..modules import SetBlockWrapper, HorizontalPoolingPyramid, PackSequenceWrapper, SeparateFCs, SeparateBNNecks, conv1x1, conv3x3, BasicBlock2D, BasicBlockP3D, BasicBlock3D
-import torch.nn.functional as F
-from .gpgait import BranchPAGCN
-from .lidargaitv2_utils import PointNetSetAbstraction, PPPooling, PPPooling_UDP,NetVLAD
+
+
 
 from einops import rearrange
-import copy
-import cv2
-from kornia import morphology as morph
+
 
 import torch
 import torch.nn as nn
@@ -164,6 +158,60 @@ class OmniGait(BaseModel):
         feat = tokenizer(img)# [B, c, s, h, w]
         return self.encode_token_feat(feat, seqL)
 
+    def pad_token_feat(self, feat, target_len):
+        curr_len = feat.size(2)
+        if curr_len >= target_len:
+            return feat
+        if curr_len == 0:
+            pad_shape = list(feat.shape)
+            pad_shape[2] = target_len
+            return feat.new_zeros(pad_shape)
+        repeat_times = (target_len + curr_len - 1) // curr_len
+        repeat_dims = [1] * feat.dim()
+        repeat_dims[2] = repeat_times
+        return feat.repeat(*repeat_dims).narrow(2, 0, target_len)
+
+    def align_token_feats_for_fusion(self, anchor_feat, pair_feat, anchor_seqL, pair_seqL):
+        if anchor_seqL is None or pair_seqL is None:
+            target_len = max(anchor_feat.size(2), pair_feat.size(2))
+            return (
+                self.pad_token_feat(anchor_feat, target_len),
+                self.pad_token_feat(pair_feat, target_len),
+                None
+            )
+
+        anchor_lengths = anchor_seqL.reshape(-1).detach().cpu().tolist()
+        pair_lengths = pair_seqL.reshape(-1).detach().cpu().tolist()
+        fused_seqL = torch.maximum(anchor_seqL, pair_seqL)
+
+        if anchor_feat.size(0) != 1 or pair_feat.size(0) != 1 or len(anchor_lengths) != len(pair_lengths):
+            target_len = int(fused_seqL.max().item())
+            return (
+                self.pad_token_feat(anchor_feat, target_len),
+                self.pad_token_feat(pair_feat, target_len),
+                fused_seqL
+            )
+
+        anchor_starts = [0] + np.cumsum(anchor_lengths).tolist()[:-1]
+        pair_starts = [0] + np.cumsum(pair_lengths).tolist()[:-1]
+        fused_lengths = fused_seqL.reshape(-1).detach().cpu().tolist()
+
+        aligned_anchor_feats = []
+        aligned_pair_feats = []
+        for anchor_start, pair_start, anchor_len, pair_len, fused_len in zip(
+            anchor_starts, pair_starts, anchor_lengths, pair_lengths, fused_lengths
+        ):
+            anchor_slice = anchor_feat.narrow(2, int(anchor_start), int(anchor_len))
+            pair_slice = pair_feat.narrow(2, int(pair_start), int(pair_len))
+            aligned_anchor_feats.append(self.pad_token_feat(anchor_slice, int(fused_len)))
+            aligned_pair_feats.append(self.pad_token_feat(pair_slice, int(fused_len)))
+
+        return (
+            torch.cat(aligned_anchor_feats, dim=2),
+            torch.cat(aligned_pair_feats, dim=2),
+            fused_seqL
+        )
+
         
 
     def forward(self, inputs):
@@ -216,18 +264,26 @@ class OmniGait(BaseModel):
 
             # Omni-eval
             token_feat_dict = {}
+            seqL_dict = {}
             all_embeds = []
             for (i, (modal_name, modal_input, tokenizer)) in enumerate(img_modals):
                 token_feat_dict[modal_name] = tokenizer(modal_input)
+                seqL_dict[modal_name] = seqL[i].unsqueeze(0)
                 embed, logits = self.split_forword(modal_input, tokenizer, seqL[i].unsqueeze(0))   # shape: [B, C, ...]
                 all_embeds.append(embed)
 
             fusion_embeds = []
             for anchor_name, pair_name in self.fusion_pairs:
-                fused_feat = self.early_fusion_module(
-                    torch.cat([token_feat_dict[anchor_name], token_feat_dict[pair_name]], dim=1)
+                anchor_feat, pair_feat, fused_seqL = self.align_token_feats_for_fusion(
+                    token_feat_dict[anchor_name],
+                    token_feat_dict[pair_name],
+                    seqL_dict[anchor_name],
+                    seqL_dict[pair_name]
                 )
-                fusion_embed, _ = self.encode_token_feat(fused_feat, seqL[-1].unsqueeze(0))
+                fused_feat = self.early_fusion_module(
+                    torch.cat([anchor_feat, pair_feat], dim=1)
+                )
+                fusion_embed, _ = self.encode_token_feat(fused_feat, fused_seqL)
                 fusion_embeds.append(fusion_embed)
 
             all_embeds = torch.cat(all_embeds,dim=-1)
