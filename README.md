@@ -89,17 +89,23 @@ You can also use the provided command templates:
 - `multi_modal.sh`
 - `omni_modal.sh`
 
-## Model Zoo
-Coming soon.
-
 ## Acknowledgement
 This codebase is built upon the OpenGait framework and extends it for MMGait tasks.
 
 ## Citation
-If you find this project useful in your research, please consider citing our paper (BibTeX will be provided after the camera-ready).
+If you find this project useful in your research, please consider citing our paper:
+
+```bibtex
+@article{wang2026mmgait,
+  title={MMGait: Towards Multi-Modal Gait Recognition},
+  author={Wang, Chenye and Cai, Qingyuan and Hou, Saihui and Li, Aoqi and Huang, Yongzhen},
+  journal={arXiv preprint arXiv:2604.15979},
+  year={2026}
+}
+```
 
 ## Note
 This code is strictly intended for **academic purposes** and must not be used for any form of commercial use.
 
 ## Contact
-If you have any questions, please contact `BNU-IVC@outlook.com`.
+If you have any questions, please contact `chenye.wang@mail.bnu.edu.cn`.
