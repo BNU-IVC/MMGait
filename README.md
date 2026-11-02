@@ -24,17 +24,23 @@ pip install -r requirements.txt
 ```
 
 
-#### 2. Download MMGait (Agreement Required)
+#### 2. Download MMGait
 
-Request dataset access on [Hugging Face](https://huggingface.co/datasets/TerranceWcy/MMGait): log in to your Hugging Face account, complete the application form, and wait for manual approval.
+To obtain MMGait and its subsets, request access using **either** of the following two methods:
 
-To obtain and use MMGait and its subsets, all users are required to complete the following steps:
+**Option 1: Apply by email**
 
 1. Download the latest agreement: `MMGait Dataset Usage Agreement.pdf`.
 2. Complete and sign it.
 3. Submit it to `BNU-IVC@outlook.com` and cc `chenye.wang@mail.bnu.edu.cn`.
 4. Please use your organization/institute email address to send the mail.
 5. We will handle requests within a week. Occasionally, emails may be flagged as spam. If you have not received a response within a week, please resend your mail from an alternate email address.
+
+**Option 2: Apply on Hugging Face**
+
+1. Visit [MMGait on Hugging Face](https://huggingface.co/datasets/TerranceWcy/MMGait) and log in to your account.
+2. Complete the access application form with your institutional affiliation and research purpose.
+3. Wait for manual approval. Once approved, you can download the dataset from the Hugging Face page.
 
 In case you encounter any issues, please feel free to reach out to us via `BNU-IVC@outlook.com` and cc `chenye.wang@mail.bnu.edu.cn`.
 
