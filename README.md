@@ -25,6 +25,9 @@ pip install -r requirements.txt
 
 
 #### 2. Download MMGait (Agreement Required)
+
+Request dataset access on [Hugging Face](https://huggingface.co/datasets/TerranceWcy/MMGait): log in to your Hugging Face account, complete the application form, and wait for manual approval.
+
 To obtain and use MMGait and its subsets, all users are required to complete the following steps:
 
 1. Download the latest agreement: `MMGait Dataset Usage Agreement.pdf`.
